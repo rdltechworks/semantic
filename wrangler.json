@@ -5,6 +5,20 @@
   "assets": {
     "directory": "public"
   },
+    "migrations": [
+    {
+      "new_sqlite_classes": ["Chat"],
+      "tag": "v1"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "class_name": "Chat",
+        "name": "Chat"
+      }
+    ]
+  },
   "build": {
     "command": "npx esbuild src/client/index.tsx --bundle --outdir=public/dist --splitting --sourcemap --format=esm"
   },
@@ -14,5 +28,17 @@
   "ai": {
     "binding": "AI"
   },
+  "d1_databases": [
+    {
+      "binding": "DB01",
+      "database_name": "d1-starter-sessions-api",
+      "database_id": "3690f364-3425-4fab-8eb7-c74c5717578a"
+    },
+        {
+      "binding": "DB",
+      "database_id": "151f7d9b-365f-41d7-83ed-0bf4eeef5086",
+      "database_name": "d1-template-database"
+    }
+  ],
   "upload_source_maps": true
 }
