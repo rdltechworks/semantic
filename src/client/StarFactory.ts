@@ -16,6 +16,25 @@ export function createStar(scene: BABYLON.Scene, systemId: 'sol-system' | 'proxi
     coreMat.disableLighting = true;
     coreSphere.material = coreMat;
 
+    // Pulsating animation
+    const animation = new BABYLON.Animation("pulse", "scaling.x", 30, BABYLON.Animation.ANIMATIONTYPE_FLOAT, BABYLON.Animation.ANIMATIONLOOPMODE_CYCLE);
+    const keys = [];
+    keys.push({ frame: 0, value: 1 });
+    keys.push({ frame: 60, value: 1.1 });
+    keys.push({ frame: 120, value: 1 });
+    animation.setKeys(keys);
+    coreSphere.animations.push(animation);
+
+    const yAnimation = animation.clone();
+    yAnimation.targetProperty = "scaling.y";
+    coreSphere.animations.push(yAnimation);
+
+    const zAnimation = animation.clone();
+    zAnimation.targetProperty = "scaling.z";
+    coreSphere.animations.push(zAnimation);
+
+    scene.beginAnimation(coreSphere, 0, 120, true);
+
     // Particle Systems
     const particleSystem = new BABYLON.ParticleSystem("particles", 4000, scene);
     particleSystem.particleTexture = new BABYLON.Texture("https://raw.githubusercontent.com/PatrickRyanMS/BabylonJStextures/master/ParticleSystems/Sun/T_SunSurface.png", scene);
