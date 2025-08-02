@@ -1,0 +1,18 @@
+{
+  "compatibility_date": "2025-04-01",
+  "main": "src/server/index.ts",
+  "name": "semantic",
+  "assets": {
+    "directory": "public"
+  },
+  "build": {
+    "command": "npx esbuild src/client/index.tsx --bundle --outdir=public/dist --splitting --sourcemap --format=esm"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "ai": {
+    "binding": "AI"
+  },
+  "upload_source_maps": true
+}

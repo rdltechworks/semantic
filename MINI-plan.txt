@@ -1,0 +1,227 @@
+ This minimal implementation focuses on proving the core architectural components: Client (React/Babylon.js) -> Real-time Server (PartyKit) -> API Server 
+  (Hono/D1).
+
+  "Hello World" Application: Core Functionality
+
+
+   1. Login: A user enters a username on a simple start screen.
+   2. Enter World: The user is placed into the "Sol System" as a simple sphere (their "ship"). They can see a "Sun" and "Earth" sphere.
+   3. Real-time Movement: The user can fly their ship around. If other users are in the same system, they will see each other's ships moving in real-time.
+   4. System Travel: The user can click a UI button to "Travel to Proxima Centauri." The scene will then change to show a red dwarf star and a single exoplanet.
+      Any players in that system will become visible.
+
+  This setup validates the end-to-end data flow, from user authentication to real-time state synchronization and room switching, which is the foundational loop
+  of the entire game.
+
+  ---
+
+  "Hello World" Implementation Plan
+
+
+  Here is a breakdown of what would be built for each part of the architecture.
+
+  1. Backend API & Database (`/src/server/api` & D1)
+
+  This would be a single Cloudflare Worker with one endpoint to handle logins.
+
+   * D1 Database Schema: A single, simple table.
+
+
+   1     -- /src/d1/schema.sql
+   2     CREATE TABLE players (
+   3       id TEXT PRIMARY KEY,
+   4       username TEXT UNIQUE NOT NULL,
+   5       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+   6     );
+
+
+
+   * API Endpoint (`/src/server/api/index.ts`):
+      A POST /api/login route.
+
+
+    1     // Simplified Hono router
+    2     import { Hono } from 'hono';
+    3 
+    4     const app = new Hono<{ Bindings: Env }>();
+    5 
+    6     app.post('/api/login', async (c) => {
+    7       const { username } = await c.req.json();
+    8       if (!username) {
+    9         return c.json({ error: 'Username is required' }, 400);
+   10       }
+   11 
+   12       // Check if user exists, otherwise create them
+   13       let user = await c.env.DB.prepare(
+   14         'SELECT id FROM players WHERE username = ?'
+   15       ).bind(username).first();
+   16 
+   17       if (!user) {
+   18         const newId = crypto.randomUUID();
+   19         await c.env.DB.prepare(
+   20           'INSERT INTO players (id, username) VALUES (?, ?)'
+   21         ).bind(newId, username).run();
+   22         user = { id: newId };
+   23       }
+   24 
+   25       return c.json({ playerId: user.id });
+   26     });
+   27 
+   28     export default app;
+
+
+
+  2. Real-time Server (`/src/server/party`)
+
+  A simplified PartyKit server that manages player positions within a room (a solar system).
+
+   * PartyKit Server Logic (`/src/server/party/solarSystem.ts`):
+
+
+    1     import type { PartyKitServer, PartyKitConnection } from "partykit/server";
+    2 
+    3     export default class SolarSystemServer implements PartyKitServer {
+    4       (readonly party: PartyKitRoom) {}
+    5       c
+    6       // Store player data in memory for simplicity
+    7       players: Map<string, { x: number, y: number, z: number }> = new Map();
+    8       s
+    9       onConnect(conn: PartyKitConnection) {
+   10         // When a player connects, ask them to identify themselves
+   11         conn.send(JSON.stringify({ type: 'identify' }));
+   12       }
+   13       t
+   14       onMessage(message: string, sender: PartyKitConnection) {
+   15         const msg = JSON.parse(message);
+   16 
+   17         if (msg.type === 'iam') {
+   18           // Associate connection with a player ID
+   19           sender.setState({ playerId: msg.playerId });
+   20           this.players.set(msg.playerId, { x: 0, y: 0, z: 0 });
+   21           // Tell everyone a new player has joined
+   22           this.party.broadcast(JSON.stringify({ type: 'player-joined', id: msg.playerId }), [sender.id]);
+   23           // Send the new player the state of all other players
+   24           sender.send(JSON.stringify({ type: 'sync-players', players: Object.fromEntries(this.players) }));
+   25         }
+   26 
+   27         if (msg.type === 'move') {
+   28           const playerId = sender.state.playerId;
+   29           if (playerId) {
+   30             this.players.set(playerId, msg.position);
+   31             // Broadcast movement to everyone else
+   32             this.party.broadcast(JSON.stringify({ type: 'player-moved', id: playerId, position: msg.position }), [sender.id]);
+   33           }
+   34         }
+   35       }
+   36
+   37       onClose(conn: PartyKitConnection) {
+   38         const playerId = conn.state.playerId;
+   39         if (playerId) {
+   40           this.players.delete(playerId);
+   41           this.party.broadcast(JSON.stringify({ type: 'player-left', id: playerId }));
+   42         }
+   43       }
+   44     }
+
+
+
+  3. Frontend Client (`/src/client`)
+
+  A React app that handles login, renders the 3D scene, and communicates with the PartyKit server.
+
+
+   * Login Component (`/src/client/components/Login.tsx`):
+       * An input for username.
+       * A button that calls the /api/login endpoint.
+       * On success, it stores the playerId and loads the main game component.
+
+
+   * Game Component (`/src/client/components/Game.tsx`):
+       * Contains the Babylon.js canvas.
+       * Has UI buttons to switch between "Sol System" and "Proxima Centauri".
+       * Manages the WebSocket connection to the PartyKit server.
+
+   * Babylon.js Scene Logic (`/src/client/scenes/SolarSystemScene.ts`):
+
+
+    1     // Simplified scene logic
+    2     import * as BABYLON from '@babylonjs/core';
+    3 
+    4     export class GameScene {
+    5       private scene: BABYLON.Scene;
+    6       private localPlayer: BABYLON.Mesh;
+    7       private remotePlayers: Map<string, BABYLON.Mesh> = new Map();
+    8       private socket: WebSocket;
+    9 
+   10       (canvas, engine, playerId, systemId) {
+   11         this.scene = new BABYLON.Scene(engine);
+   12         this.setupCameraAndLights();
+   13         this.loadSystem(systemId); // Load Sun/Earth or Proxima
+   14       s
+   15         // Create local player ship
+   16         this.localPlayer = BABYLON.MeshBuilder.CreateSphere(`player-${playerId}`, { diameter: 1 }, this.scene);
+   17         this.localPlayer.material = new BABYLON.StandardMaterial("playerMat", this.scene);
+   18         (this.localPlayer.material as BABYLON.StandardMaterial).emissiveColor = BABYLON.Color3.Blue();
+   19       t
+   20         // Connect to PartyKit
+   21         this.socket = new WebSocket(`wss://your-party-url/${systemId}`);
+   22         this.setupWebSocket(playerId);
+   23 
+   24         // Handle controls and render loop
+   25         this.setupControls();
+   26         engine.runRenderLoop(() => this.scene.render());
+   27       }
+   28
+   29       loadSystem(systemId: string) {
+   30         // Clear existing planets
+   31         this.scene.meshes.filter(m => m.name.startsWith("planet-")).forEach(m => m.dispose());
+   32
+   33         if (systemId === 'sol-system') {
+   34           const sun = BABYLON.MeshBuilder.CreateSphere("planet-sun", { diameter: 10 }, this.scene);
+   35           sun.material = new BABYLON.StandardMaterial("sunMat", this.scene);
+   36           (sun.material as BABYLON.StandardMaterial).emissiveColor = BABYLON.Color3.Yellow();
+   37
+   38           const earth = BABYLON.MeshBuilder.CreateSphere("planet-earth", { diameter: 2 }, this.scene);
+   39           earth.position.x = 20;
+   40         } else if (systemId === 'proxima-system') {
+   41           const proxima = BABYLON.MeshBuilder.CreateSphere("planet-proxima", { diameter: 5 }, this.scene);
+   42           proxima.material = new BABYLON.StandardMaterial("proximaMat", this.scene);
+   43           (proxima.material as BABYLON.StandardMaterial).emissiveColor = BABYLON.Color3.Red();
+   44
+   45           const exoplanet = BABYLON.MeshBuilder.CreateSphere("planet-proxima-b", { diameter: 1.5 }, this.scene);
+   46           exoplanet.position.x = 15;
+   47         }
+   48       }
+   49
+   50       setupWebSocket(playerId: string) {
+   51         this.socket.onmessage = (event) => {
+   52           const msg = JSON.parse(event.data);
+   53           if (msg.type === 'identify') {
+   54             this.socket.send(JSON.stringify({ type: 'iam', playerId }));
+   55           }
+   56           if (msg.type === 'player-joined') {
+   57             const remotePlayer = BABYLON.MeshBuilder.CreateSphere(`player-${msg.id}`, { diameter: 1 }, this.scene);
+   58             this.remotePlayers.set(msg.id, remotePlayer);
+   59           }
+   60           if (msg.type === 'player-moved') {
+   61             const playerMesh = this.remotePlayers.get(msg.id);
+   62             if (playerMesh) {
+   63               playerMesh.position = new BABYLON.Vector3(msg.position.x, msg.position.y, msg.position.z);
+   64             }
+   65           }
+   66           if (msg.type === 'player-left') {
+   67             this.remotePlayers.get(msg.id)?.dispose();
+   68             this.remotePlayers.delete(msg.id);
+   69           }
+   70         };
+   71       }
+   72
+   73       setupControls() {
+   74         // Simplified movement logic
+   75         // In a real game, this would be tied to the render loop
+   76         setInterval(() => {
+   77           // Assume localPlayer position has been updated by keyboard/mouse input
+   78           this.socket.send(JSON.stringify({ type: 'move', position: this.localPlayer.position }));
+   79         }, 50); // Send updates 20 times per second
+   80       }
+   81     }

@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Small World</title>
+    <style>
+        html, body {
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        #renderCanvas {
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+        }
+    </style>
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+</head>
+<body>
+    <canvas id="renderCanvas"></canvas>
+    <script>
+        const canvas = document.getElementById("renderCanvas");
+        const engine = new BABYLON.Engine(canvas, true);
+
+        const createScene = function () {
+            const scene = new BABYLON.Scene(engine);
+            scene.clearColor = new BABYLON.Color3(0.02, 0.02, 0.1); // Dark blue background, inspired by new.html
+
+            // Camera
+            const camera = new BABYLON.ArcRotateCamera("camera", -Math.PI / 2, Math.PI / 2.5, 200, BABYLON.Vector3.Zero(), scene); // Adjusted initial radius for wider view
+            camera.attachControl(canvas, true);
+            camera.lowerRadiusLimit = 8;
+            camera.upperRadiusLimit = 500; // Increased upper radius limit for max zoom out
+            camera.wheelDeltaPercentage = 0.01;
+            camera.panningSensibility = 1000;
+
+            // Light
+            const hemisphericLight = new BABYLON.HemisphericLight("hemiLight", new BABYLON.Vector3(0, 1, 0), scene);
+            hemisphericLight.intensity = 0.4;
+            hemisphericLight.groundColor = new BABYLON.Color3(0.1, 0.1, 0.2);
+
+            const sunLight = new BABYLON.DirectionalLight("sunLight", new BABYLON.Vector3(-0.5, -1, -0.5), scene);
+            sunLight.diffuse = new BABYLON.Color3(1, 0.9, 0.7);
+            sunLight.intensity = 1.2;
+
+            // Player representation (a sphere)
+            const player = BABYLON.MeshBuilder.CreateSphere("player", { diameter: 0.5 }, scene);
+            player.position.y = -0.75; // On top of the ground
+            const playerMaterial = new BABYLON.StandardMaterial("playerMat", scene);
+            playerMaterial.diffuseColor = new BABYLON.Color3(1, 0, 0); // Red
+            player.material = playerMaterial;
+
+            // --- Helper functions for fantasy planets (from new.html) ---
+            const createCastle = (parent, localPos, scale, color = new BABYLON.Color3(0.7, 0.7, 0.8)) => {
+                const base = BABYLON.MeshBuilder.CreateCylinder("castleBase", { height: 1.5 * scale, diameter: 1.2 * scale, tessellation: 8 }, scene);
+                base.parent = parent;
+                base.position = localPos;
+                
+                const baseMaterial = new BABYLON.StandardMaterial("baseMat", scene);
+                baseMaterial.diffuseColor = color;
+                base.material = baseMaterial;
+
+                for (let i = 0; i < 3; i++) {
+                    const angle = (i / 3) * Math.PI * 2;
+                    const radius = 0.4 * scale;
+                    const towerX = localPos.x + Math.cos(angle) * radius;
+                    const towerZ = localPos.z + Math.sin(angle) * radius;
+
+                    const tower = BABYLON.MeshBuilder.CreateCylinder("tower", { height: 2.2 * scale, diameter: 0.5 * scale }, scene);
+                    tower.parent = parent;
+                    tower.position = new BABYLON.Vector3(towerX, localPos.y + 1.3 * scale, towerZ);
+                    tower.material = baseMaterial;
+
+                    const roof = BABYLON.MeshBuilder.CreateCylinder("roof", { height: 0.6 * scale, diameterTop: 0, diameterBottom: 0.7 * scale }, scene);
+                    roof.parent = parent;
+                    roof.position = new BABYLON.Vector3(towerX, localPos.y + 2.7 * scale, towerZ);
+                    
+                    const roofMaterial = new BABYLON.StandardMaterial("roofMat", scene);
+                    roofMaterial.diffuseColor = new BABYLON.Color3(0.8, 0.2, 0.1);
+                    roof.material = roofMaterial;
+                }
+            };
+
+            const createTreeCluster = (parent, localPos, count, scale) => {
+                for (let i = 0; i < count; i++) {
+                    const angle = (i / count) * Math.PI * 2 + Math.random() * 0.5;
+                    const radius = (0.2 + Math.random() * 0.3) * scale;
+                    const x = localPos.x + Math.cos(angle) * radius;
+                    const z = localPos.z + Math.sin(angle) * radius;
+                    
+                    const trunkHeight = (0.6 + Math.random() * 0.4) * scale;
+                    const trunk = BABYLON.MeshBuilder.CreateCylinder("trunk", { height: trunkHeight, diameter: 0.08 * scale }, scene);
+                    trunk.parent = parent;
+                    trunk.position = new BABYLON.Vector3(x, localPos.y + trunkHeight/2, z);
+                    
+                    const trunkMaterial = new BABYLON.StandardMaterial("trunkMat", scene);
+                    trunkMaterial.diffuseColor = new BABYLON.Color3(0.4, 0.25, 0.1);
+                    trunk.material = trunkMaterial;
+
+                    const leavesSize = (0.4 + Math.random() * 0.3) * scale;
+                    const leaves = BABYLON.MeshBuilder.CreateSphere("leaves", { diameter: leavesSize }, scene);
+                    leaves.parent = parent;
+                    leaves.position = new BABYLON.Vector3(x, localPos.y + trunkHeight + leavesSize/3, z);
+                    
+                    const leavesMaterial = new BABYLON.StandardMaterial("leavesMat", scene);
+                    leavesMaterial.diffuseColor = new BABYLON.Color3(0.1 + Math.random() * 0.2, 0.5 + Math.random() * 0.3, 0.1 + Math.random() * 0.2);
+                    leaves.material = leavesMaterial;
+                }
+            };
+
+            const createVillage = (parent, localPos, scale) => {
+                const houseCount = 5;
+                for (let i = 0; i < houseCount; i++) {
+                    const angle = (i / houseCount) * Math.PI * 2;
+                    const radius = 0.4 * scale;
+                    const x = localPos.x + Math.cos(angle) * radius;
+                    const z = localPos.z + Math.sin(angle) * radius;
+
+                    const houseSize = 0.3 + Math.random() * 0.2;
+                    const house = BABYLON.MeshBuilder.CreateBox("house", { 
+                        width: houseSize * scale, 
+                        height: 0.5 * scale, 
+                        depth: houseSize * scale 
+                    }, scene);
+                    house.parent = parent;
+                    house.position = new BABYLON.Vector3(x, localPos.y + 0.25 * scale, z);
+                    
+                    const houseMaterial = new BABYLON.StandardMaterial("houseMat", scene);
+                    const houseColors = [
+                        new BABYLON.Color3(0.8, 0.7, 0.5),
+                        new BABYLON.Color3(0.9, 0.8, 0.6),
+                        new BABYLON.Color3(0.7, 0.6, 0.4)
+                    ];
+                    houseMaterial.diffuseColor = houseColors[Math.floor(Math.random() * houseColors.length)];
+                    house.material = houseMaterial;
+
+                    const roof = BABYLON.MeshBuilder.CreateCylinder("houseRoof", { 
+                        height: 0.25 * scale, 
+                        diameterTop: 0, 
+                        diameterBottom: (houseSize + 0.1) * scale 
+                    }, scene);
+                    roof.parent = parent;
+                    roof.position = new BABYLON.Vector3(x, localPos.y + 0.625 * scale, z);
+                    roof.rotation.x = Math.PI;
+                    
+                    const roofMaterial = new BABYLON.StandardMaterial("houseRoofMat", scene);
+                    roofMaterial.diffuseColor = new BABYLON.Color3(0.6, 0.2, 0.1);
+                    roof.material = roofMaterial;
+                }
+            };
+
+            const createMountains = (parent, localPos, scale, color = new BABYLON.Color3(0.5, 0.5, 0.6)) => {
+                for (let i = 0; i < 4; i++) {
+                    const mountain = BABYLON.MeshBuilder.CreateCylinder("mountain", { 
+                        height: (1.2 + Math.random() * 0.8) * scale, 
+                        diameterTop: 0.05 * scale, 
+                        diameterBottom: (0.6 + Math.random() * 0.3) * scale,
+                        tessellation: 6
+                    }, scene);
+                    mountain.parent = parent;
+                    mountain.position = new BABYLON.Vector3(
+                        localPos.x + (i - 1.5) * 0.25 * scale, 
+                        localPos.y + 0.7 * scale, 
+                        localPos.z + (Math.random() - 0.5) * 0.3 * scale
+                    );
+                    
+                    const mountainMaterial = new BABYLON.StandardMaterial("mountainMat", scene);
+                    mountainMaterial.diffuseColor = color;
+                    mountain.material = mountainMaterial;
+                }
+            };
+
+            const createCrystals = (parent, localPos, scale) => {
+                for (let i = 0; i < 6; i++) {
+                    const angle = (i / 6) * Math.PI * 2;
+                    const radius = 0.3 * scale;
+                    const x = localPos.x + Math.cos(angle) * radius;
+                    const z = localPos.z + Math.sin(angle) * radius;
+
+                    const crystal = BABYLON.MeshBuilder.CreateCylinder("crystal", { 
+                        height: (0.8 + Math.random() * 0.6) * scale, 
+                        diameterTop: 0.02 * scale, 
+                        diameterBottom: 0.15 * scale,
+                        tessellation: 6
+                    }, scene);
+                    crystal.parent = parent;
+                    crystal.position = new BABYLON.Vector3(x, localPos.y + 0.5 * scale, z);
+                    
+                    const crystalMaterial = new BABYLON.StandardMaterial("crystalMat", scene);
+                    crystalMaterial.diffuseColor = new BABYLON.Color3(0.3, 0.8, 1);
+                    crystalMaterial.emissiveColor = new BABYLON.Color3(0.1, 0.3, 0.5);
+                    crystalMaterial.alpha = 0.8;
+                    crystal.material = crystalMaterial;
+                }
+            };
+
+            // Function to create a sun (from new.html)
+            const createSun = (position) => {
+                const sun = BABYLON.MeshBuilder.CreateSphere("sun", {diameter: 3, segments: 16}, scene);
+                sun.position = position;
+
+                const sunMaterial = new BABYLON.StandardMaterial("sunMat", scene);
+                sunMaterial.emissiveColor = new BABYLON.Color3(1, 0.8, 0.3);
+                sunMaterial.disableLighting = true;
+                sun.material = sunMaterial;
+
+                let glowIntensity = 0;
+                scene.onBeforeRenderObservable.add(() => {
+                    glowIntensity += 0.02;
+                    const intensity = 0.8 + Math.sin(glowIntensity) * 0.2;
+                    sunMaterial.emissiveColor = new BABYLON.Color3(intensity, intensity * 0.8, intensity * 0.3);
+                });
+
+                return sun;
+            };
+
+            // Function to create a fantasy planet with features (from new.html)
+            const createFantasyPlanet = (name, position, baseColor, features = []) => {
+                const planet = BABYLON.MeshBuilder.CreateSphere(name, { diameter: 8, segments: 24 }, scene);
+                planet.position = position;
+                
+                const planetMaterial = new BABYLON.StandardMaterial(`${name}Mat`, scene);
+                planetMaterial.diffuseColor = baseColor;
+                planetMaterial.specularColor = new BABYLON.Color3(0.1, 0.1, 0.1);
+                planetMaterial.specularPower = 16;
+                planet.material = planetMaterial;
+
+                features.forEach((feature) => {
+                    switch(feature.type) {
+                        case 'castle':
+                            createCastle(planet, feature.pos, feature.scale || 1, feature.color);
+                            break;
+                        case 'trees':
+                            createTreeCluster(planet, feature.pos, feature.count || 5, feature.scale || 1);
+                            break;
+                        case 'village':
+                            createVillage(planet, feature.pos, feature.scale || 1);
+                            break;
+                        case 'mountains':
+                            createMountains(planet, feature.pos, feature.scale || 1, feature.color);
+                            break;
+                        case 'crystals':
+                            createCrystals(planet, feature.pos, feature.scale || 1);
+                            break;
+                    }
+                });
+
+                return planet;
+            };
+
+            // --- Solar Systems ---
+            const solarSystems = {};
+
+            // Solar System 1
+            const solarSystem1Center = new BABYLON.Vector3(-50, 0, 0);
+            solarSystems.Solaris = {
+                sun: createSun(solarSystem1Center),
+                planets: []
+            };
+            solarSystems.Solaris.planets.push(createFantasyPlanet("forestPlanet", solarSystem1Center.add(new BABYLON.Vector3(-16, 0, 0)), 
+                new BABYLON.Color3(0.2, 0.6, 0.2), [
+                    { type: 'castle', pos: new BABYLON.Vector3(0, 3.2, 0), scale: 0.9, color: new BABYLON.Color3(0.6, 0.8, 0.5) },
+                    { type: 'trees', pos: new BABYLON.Vector3(2.5, 2, 2), count: 12, scale: 0.7 },
+                    { type: 'trees', pos: new BABYLON.Vector3(-2, 2.5, -2.5), count: 8, scale: 0.6 },
+                    { type: 'village', pos: new BABYLON.Vector3(0, -3, 0), scale: 0.5 }
+                ]));
+            solarSystems.Solaris.planets.push(createFantasyPlanet("desertPlanet", solarSystem1Center.add(new BABYLON.Vector3(16, 0, 0)), 
+                new BABYLON.Color3(0.9, 0.7, 0.3), [
+                    { type: 'mountains', pos: new BABYLON.Vector3(0, 3, 0), scale: 0.8, color: new BABYLON.Color3(0.8, 0.6, 0.4) },
+                    { type: 'village', pos: new BABYLON.Vector3(2.5, 0, 2), scale: 0.6 },
+                    { type: 'castle', pos: new BABYLON.Vector3(-2.5, 2.5, -1), scale: 0.7, color: new BABYLON.Color3(0.9, 0.8, 0.6) },
+                ]));
+
+            // Solar System 2
+            const solarSystem2Center = new BABYLON.Vector3(50, 0, 0);
+            solarSystems.Aethel = {
+                sun: createSun(solarSystem2Center),
+                planets: []
+            };
+            solarSystems.Aethel.planets.push(createFantasyPlanet("icePlanet", solarSystem2Center.add(new BABYLON.Vector3(0, 0, 16)), 
+                new BABYLON.Color3(0.8, 0.9, 1), [
+                    { type: 'mountains', pos: new BABYLON.Vector3(0, 3, 0), scale: 1.0, color: new BABYLON.Color3(0.9, 0.95, 1) },
+                    { type: 'castle', pos: new BABYLON.Vector3(2.5, 1.5, 0), scale: 0.8, color: new BABYLON.Color3(0.8, 0.9, 0.95) },
+                    { type: 'crystals', pos: new BABYLON.Vector3(-2.5, 2, 1), scale: 0.6 }
+                ]));
+            solarSystems.Aethel.planets.push(createFantasyPlanet("crystalPlanet", solarSystem2Center.add(new BABYLON.Vector3(0, 0, -16)), 
+                new BABYLON.Color3(0.4, 0.2, 0.6), [
+                    { type: 'crystals', pos: new BABYLON.Vector3(0, 3, 0), scale: 1.2 },
+                    { type: 'crystals', pos: new BABYLON.Vector3(2, 1, 2), scale: 0.8 },
+                    { type: 'crystals', pos: new BABYLON.Vector3(-2, 2, -1), scale: 1.0 },
+                    { type: 'castle', pos: new BABYLON.Vector3(0, -2.5, 0), scale: 0.6, color: new BABYLON.Color3(0.6, 0.4, 0.8) }
+                ]));
+
+            // Add orbital motion and rotation to planets
+            let time = 0;
+            scene.onBeforeRenderObservable.add(() => {
+                time += 0.01;
+                
+                // Planet rotations for Solaris
+                solarSystems.Solaris.planets[0].rotation.y += 0.008; // forestPlanet
+                solarSystems.Solaris.planets[1].rotation.y += 0.005; // desertPlanet
+
+                // Subtle orbital motion for Solaris
+                const orbitRadiusSolaris = 2;
+                solarSystems.Solaris.planets[0].position.x = solarSystem1Center.x -16 + Math.sin(time * 0.3) * orbitRadiusSolaris;
+                solarSystems.Solaris.planets[0].position.z = solarSystem1Center.z + Math.cos(time * 0.3) * orbitRadiusSolaris;
+                
+                solarSystems.Solaris.planets[1].position.x = solarSystem1Center.x + 16 + Math.sin(time * 0.4) * orbitRadiusSolaris;
+                solarSystems.Solaris.planets[1].position.z = solarSystem1Center.z + Math.cos(time * 0.4) * orbitRadiusSolaris;
+
+                // Planet rotations for Aethel
+                solarSystems.Aethel.planets[0].rotation.y += 0.006; // icePlanet
+                solarSystems.Aethel.planets[1].rotation.y += 0.007; // crystalPlanet
+
+                // Subtle orbital motion for Aethel
+                const orbitRadiusAethel = 2;
+                solarSystems.Aethel.planets[0].position.x = solarSystem2Center.x + Math.sin(time * 0.35) * orbitRadiusAethel;
+                solarSystems.Aethel.planets[0].position.z = solarSystem2Center.z + 16 + Math.cos(time * 0.35) * orbitRadiusAethel;
+                
+                solarSystems.Aethel.planets[1].position.x = solarSystem2Center.x + Math.sin(time * 0.45) * orbitRadiusAethel;
+                solarSystems.Aethel.planets[1].position.z = solarSystem2Center.z -16 + Math.cos(time * 0.45) * orbitRadiusAethel;
+            });
+
+
+            // Basic movement (for now, just move the player)
+            let moveSpeed = 0.1;
+            // Initialize isKeyDown object
+            scene.isKeyDown = {};
+
+            scene.onBeforeRenderObservable.add(() => {
+                // Simple keyboard input for movement
+                if (scene.isKeyDown[87]) { // W
+                    player.position.z += moveSpeed;
+                }
+                if (scene.isKeyDown[83]) { // S
+                    player.position.z -= moveSpeed;
+                }
+                if (scene.isKeyDown[65]) { // A
+                    player.position.x -= moveSpeed;
+                }
+                if (scene.isKeyDown[68]) { // D
+                    player.position.x += moveSpeed;
+                }
+            });
+
+            // Enable keyboard input
+            scene.actionManager = new BABYLON.ActionManager(scene);
+            scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyDownTrigger, function (evt) {
+                scene.isKeyDown[evt.sourceEvent.keyCode] = true;
+            }));
+            scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyUpTrigger, function (evt) {
+                scene.isKeyDown[evt.sourceEvent.keyCode] = false;
+            }));
+
+
+            return scene;
+        };
+
+        const scene = createScene();
+
+        engine.runRenderLoop(function () {
+            scene.render();
+        });
+
+        window.addEventListener("resize", function () {
+            engine.resize();
+        });
+    </script>
+</body>
+</html>
