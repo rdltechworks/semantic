@@ -1,143 +1,15 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Galaxy Explorer - Hello World</title>
-    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <link rel="icon" href="/assets/logo.svg" type="image/svg+xml">
+    <title>Galaxy Explorer</title>
     <style>
         html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
-        #game-ui { display: flex; justify-content: center; align-items: center; height: 100%; }
-        #login-screen, #system-select-screen { text-align: center; }
-        #game-canvas { width: 100%; height: 100%; display: none; }
-        button { margin: 10px; padding: 10px 20px; font-size: 16px; }
+        #root { height: 100%; }
     </style>
 </head>
 <body>
-
-    <div id="game-ui">
-        <div id="login-screen">
-            <h1>Enter the Galaxy</h1>
-            <form id="login-form">
-                <input type="text" id="username-input" placeholder="Enter your name" required />
-                <button type="submit">Enter</button>
-            </form>
-        </div>
-
-        <div id="system-select-screen" style="display: none;">
-            <h1 id="welcome-message"></h1>
-            <h2>Choose a Solar System</h2>
-            <button id="join-sol">Join Sol System</button>
-            <button id="join-proxima">Join Proxima Centauri</button>
-        </div>
-    </div>
-
-    <canvas id="game-canvas"></canvas>
-
-    <script>
-        const loginScreen = document.getElementById('login-screen');
-        const systemSelectScreen = document.getElementById('system-select-screen');
-        const welcomeMessage = document.getElementById('welcome-message');
-        const gameCanvas = document.getElementById('game-canvas');
-        const loginForm = document.getElementById('login-form');
-        const usernameInput = document.getElementById('username-input');
-
-        let username = '';
-        let engine = null;
-        let scene = null;
-
-        loginForm.onsubmit = (e) => {
-            e.preventDefault();
-            username = usernameInput.value;
-            if (username) {
-                loginScreen.style.display = 'none';
-                welcomeMessage.textContent = `Welcome, ${username}!`;
-                systemSelectScreen.style.display = 'block';
-            }
-        };
-
-        document.getElementById('join-sol').onclick = () => joinSystem('sol-system');
-        document.getElementById('join-proxima').onclick = () => joinSystem('proxima-system');
-
-        function joinSystem(systemId) {
-            systemSelectScreen.style.display = 'none';
-            gameCanvas.style.display = 'block';
-
-            engine = new BABYLON.Engine(gameCanvas, true);
-            scene = new BABYLON.Scene(engine);
-            scene.clearColor = new BABYLON.Color4(0.02, 0.02, 0.1, 1);
-
-            const camera = new BABYLON.ArcRotateCamera("camera", -Math.PI / 2, Math.PI / 2.5, 100, BABYLON.Vector3.Zero(), scene);
-            camera.attachControl(gameCanvas, true);
-
-            new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
-
-            // Load system-specific geometry
-            if (systemId === 'sol-system') {
-                const sun = BABYLON.MeshBuilder.CreateSphere("sun", { diameter: 10 }, scene);
-                const sunMat = new BABYLON.StandardMaterial("sunMat", scene);
-                sunMat.emissiveColor = BABYLON.Color3.Yellow();
-                sun.material = sunMat;
-            } else {
-                const proxima = BABYLON.MeshBuilder.CreateSphere("proxima", { diameter: 5 }, scene);
-                const proximaMat = new BABYLON.StandardMaterial("proximaMat", scene);
-                proximaMat.emissiveColor = BABYLON.Color3.Red();
-                proxima.material = proximaMat;
-            }
-
-            const localPlayer = BABYLON.MeshBuilder.CreateSphere("localPlayer", { diameter: 1 }, scene);
-            const localPlayerMat = new BABYLON.StandardMaterial("localPlayerMat", scene);
-            localPlayerMat.emissiveColor = BABYLON.Color3.Green();
-            localPlayer.material = localPlayerMat;
-
-            const remotePlayers = new Map();
-            const partySocket = new WebSocket(`wss://${window.location.host}/party/${systemId}`);
-
-            partySocket.onopen = () => {
-                partySocket.send(JSON.stringify({ type: 'identify', username }));
-            };
-
-            partySocket.onmessage = (event) => {
-                const msg = JSON.parse(event.data);
-                switch (msg.type) {
-                    case 'sync':
-                        msg.players.forEach(p => {
-                            if (p.id !== partySocket.id && !remotePlayers.has(p.id)) {
-                                const remotePlayer = BABYLON.MeshBuilder.CreateSphere(p.id, { diameter: 1 }, scene);
-                                remotePlayers.set(p.id, remotePlayer);
-                            }
-                        });
-                        break;
-                    case 'join':
-                        if (msg.player.id !== partySocket.id && !remotePlayers.has(msg.player.id)) {
-                            const remotePlayer = BABYLON.MeshBuilder.CreateSphere(msg.player.id, { diameter: 1 }, scene);
-                            remotePlayers.set(msg.player.id, remotePlayer);
-                        }
-                        break;
-                    case 'leave':
-                        remotePlayers.get(msg.id)?.dispose();
-                        remotePlayers.delete(msg.id);
-                        break;
-                    case 'move':
-                        const playerMesh = remotePlayers.get(msg.id);
-                        if (playerMesh) {
-                            playerMesh.position = new BABYLON.Vector3(msg.position.x, msg.position.y, msg.position.z);
-                        }
-                        break;
-                }
-            };
-
-            let time = 0;
-            scene.onBeforeRenderObservable.add(() => {
-                time += 0.01;
-                localPlayer.position.x = Math.cos(time) * 30;
-                localPlayer.position.z = Math.sin(time) * 30;
-                if (partySocket.readyState === WebSocket.OPEN) {
-                    partySocket.send(JSON.stringify({ type: 'move', position: { x: localPlayer.position.x, y: localPlayer.position.y, z: localPlayer.position.z } }));
-                }
-            });
-
-            engine.runRenderLoop(() => scene.render());
-            window.addEventListener('resize', () => engine.resize());
-        }
-    </script>
+    <div id="root"></div>
+    <script type="module" src="/dist/index.js"></script>
 </body>
 </html>
