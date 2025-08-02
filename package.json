@@ -1,21 +1,17 @@
 {
   "name": "semantic",
-  "description": "Physical Security Penetration Testing & Hardening Services",
   "cloudflare": {
-    "label": "RDL Techworks Security",
+    "label": "Semantic",
     "products": [
       "Workers"
     ],
     "categories": [
       "Security"
     ],
-    "icon_urls": [
-      "https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/5ca0ca32-e897-4699-d4c1-6b680512f000/public"
-    ],
-    "preview_image_url": "https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/43100bd9-8e11-4c20-cc00-3bec86253f00/public",
     "publish": true
   },
   "dependencies": {
+    "@babylonjs/core": "^8.20.0",
     "@loadable/component": "^5.16.7",
     "cobe": "0.6.3",
     "hono": "^4.8.3",
@@ -44,6 +40,8 @@
     "deploy": "wrangler deploy",
     "start": "npm run build && npx wrangler dev",
     "build": "npx esbuild src/client/index.tsx --bundle --outdir=public/dist --splitting --sourcemap --format=esm",
-    "test": "jest"
+    "test": "jest",
+    "predeploy": "wrangler d1 migrations apply DB --remote",
+    "seedLocalD1": "wrangler d1 migrations apply DB --local"
   }
 }

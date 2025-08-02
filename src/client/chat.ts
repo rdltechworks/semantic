@@ -5,7 +5,7 @@ import {
   routePartykitRequest,
 } from "partyserver";
 
-import type { ChatMessage, Message } from "../shared";
+import type { ChatMessage, Message } from "./chat-room/src/shared";
 
 export class Chat extends Server<Env> {
   static options = { hibernate: true };
